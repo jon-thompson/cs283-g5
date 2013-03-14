@@ -2,6 +2,7 @@
  * tsh - A tiny shell program with job control
  * 
  * Andrew Hagner & Jon Thompson
+ * ajh89 & jt476
  * CS 283 - Systems Programming
  * Winter 2013
  *
@@ -100,7 +101,7 @@ int main(int argc, char **argv)
     /* Redirect stderr to stdout (so that driver will get all output
      * on the pipe connected to stdout) */
     dup2(1, 2);
-
+	
     /* Parse the command line */
     while ((c = getopt(argc, argv, "hvp")) != EOF) {
         switch (c) {
