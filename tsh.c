@@ -171,15 +171,42 @@ void eval(char *cmdline)
 {
     char *argv[MAXARGS];
     int bg = parseline(cmdline, argv);
-
-    // check for empty line
+	pid_t pid;
+	
+    // Check for empty line
     if (argv[0] == NULL) {
-        return;
+        return; 
     }
     
     if (!builtin_cmd(argv)) {
-        printf("NOT BUILT IN!\n");
-        // fork and execute external program
+        
+		if(( pid = fork()) == 0) {
+			if( execve(argv[0], argv, environ) < 0) {
+				printf("%s: Command not found, now looking in /bin/...\n", argv[0]);
+				
+				// Note execve will blow it up after making its own copy, so no need to free.
+				char* inBin = (char*) malloc( sizeof("/bin/") + sizeof(argv[0]) + (sizeof(char)*2) );
+				strcpy(inBin, "/bin/");
+				strcat(inBin, argv[0]);
+				if( execve(inBin, argv, environ) < 0) {
+					printf("%s: Command not found in bin either.\n", argv[0]);
+					// But just in case.
+					free(inBin);
+					exit(0);
+				}
+				exit(0);
+			}
+		}
+		
+		if(!bg) {
+			int status;
+			if( waitpid(pid, &status, 0) < 0) {
+				unix_error("waitfg: waitpid error");
+			}
+		}
+		else {
+			printf("%d %s", pid, cmdline);
+		}
     }
     
     return;
@@ -248,7 +275,7 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv) 
 {
-    if (strcmp(argv[0], "quit") == 0) {
+    if (strcmp(argv[0], "quit") == 0 || strcmp(argv[0], "exit") == 0) {
         exit(0);
     }
     if (
@@ -262,10 +289,11 @@ int builtin_cmd(char **argv)
         listjobs(jobs);
         return 1;
     }
-	if (strcmp(argv[0], "exit") == 0) {
-		// cleanup
-		exit(1);
+	if ( strcmp(argv[0], "clear") == 0) {
+		printf("\033\143"); // Octal escape char followed by whatever the hell \143 is.
+		return 1;
 	}
+
     return 0;     /* not a builtin command */
 }
 
