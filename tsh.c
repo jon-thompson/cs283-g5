@@ -167,6 +167,11 @@ void eval(char *cmdline)
 {
     char *argv[MAXARGS];
     int bg = parseline(cmdline, argv);
+
+    // check for empty line
+    if (argv[0] == NULL) {
+        return;
+    }
     
     if (!builtin_cmd(argv)) {
         printf("NOT BUILT IN!\n");
