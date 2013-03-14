@@ -89,6 +89,8 @@ void app_error(char *msg);
 typedef void handler_t(int);
 handler_t *Signal(int signum, handler_t *handler);
 
+void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
+
 /*
  * main - The shell's main routine 
  */
@@ -172,6 +174,7 @@ void eval(char *cmdline)
     char *argv[MAXARGS];
     int bg = parseline(cmdline, argv);
 	pid_t pid;
+	sigset_t mask;
 	
     // Check for empty line
     if (argv[0] == NULL) {
@@ -179,10 +182,24 @@ void eval(char *cmdline)
     }
     
     if (!builtin_cmd(argv)) {
-        
+		
+		// Block SIGCHLD
+		sigemptyset(&mask);
+		sigaddset(&mask, SIGCHLD);	
+        Sigprocmask(SIG_BLOCK, &mask, NULL);
+	
+		// Fork
 		if(( pid = fork()) == 0) {
+			/* Child */
+			
+			// Unblock SIGCHLD
+			Sigprocmask(SIG_UNBLOCK, &mask, NULL);
+			
+			// Try to execute Command
 			if( execve(argv[0], argv, environ) < 0) {
-				printf("%s: Command not found, now looking in /bin/...\n", argv[0]);
+				printf("%s: Command not found in current directory.\n", argv[0]);
+				
+				printf("Looking in /bin/...\n");
 				
 				// Note execve will blow it up after making its own copy, so no need to free.
 				char* inBin = (char*) malloc( sizeof("/bin/") + sizeof(argv[0]) + (sizeof(char)*2) );
@@ -195,8 +212,16 @@ void eval(char *cmdline)
 					exit(0);
 				}
 				exit(0);
-			}
+			} 
 		}
+		/* Parent */
+		
+		// Add to jobs
+		if(bg) addjob(jobs, pid, BG, argv[0]);
+		else addjob(jobs, pid, FG, argv[0]);
+		
+		// Unblock SIGCHLD
+		Sigprocmask(SIG_UNBLOCK, &mask, NULL);		
 		
 		if(!bg) {
 			int status;
@@ -569,5 +594,13 @@ void sigquit_handler(int sig)
     exit(1);
 }
 
-
+/* Sigprocmask wrapper */
+void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
+	int result = sigprocmask(how, set, oldset);
+	if( result != 0) {
+		unix_error("sigprocmask failure.");
+		exit(0);
+	}
+	return;
+}
 
