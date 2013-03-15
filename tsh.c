@@ -199,6 +199,10 @@ void eval(char *cmdline)
 		if (pid == 0) {
 			/* Child */
 			
+			if (setpgid(0, 0) < 0) {
+				unix_error("setpgid failed");
+			}
+			
 			// Unblock SIGCHLD
 			Sigprocmask(SIG_UNBLOCK, &mask, NULL);
 			
@@ -225,9 +229,9 @@ void eval(char *cmdline)
 		
 		// add to jobs
 		if(bg) {
-			r = addjob(jobs, pid, BG, argv[0]);
+			r = addjob(jobs, pid, BG, cmdline);
 		} else {
-			r = addjob(jobs, pid, FG, argv[0]);
+			r = addjob(jobs, pid, FG, cmdline);
 		}
 		if (!r) {
 			printf("Failed to add job\n");
@@ -406,6 +410,24 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
+	pid_t pid;	
+	struct job_t *job;
+	
+	if ( (pid = fgpid(jobs)) == 0) {
+		return;	
+	}
+	
+	if ( (job = getjobpid(jobs, pid)) == NULL) {
+		return;
+	}
+	
+	if (kill(pid, SIGTSTP) < 0) {
+		unix_error("kill failed");
+	}
+	job->state = ST;
+	
+	printf("Job [%d] (%d) stopped by signal %d\n", job->jid, pid, sig);
+	
     return;
 }
 
@@ -559,7 +581,7 @@ void listjobs(struct job_t *jobs)
 		    printf("listjobs: Internal error: job[%d].state=%d ", 
 			   i, jobs[i].state);
 	    }
-	    printf("%s\n", jobs[i].cmdline);
+	    printf("%s", jobs[i].cmdline);
 	}
     }
 }
