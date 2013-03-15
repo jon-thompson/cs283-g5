@@ -90,6 +90,7 @@ typedef void handler_t(int);
 handler_t *Signal(int signum, handler_t *handler);
 
 void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
+void *Malloc(size_t size);
 
 /*
  * main - The shell's main routine 
@@ -184,12 +185,17 @@ void eval(char *cmdline)
     if (!builtin_cmd(argv)) {
 		
 		// Block SIGCHLD
-		sigemptyset(&mask);
-		sigaddset(&mask, SIGCHLD);	
+		if (sigemptyset(&mask) < 0)
+			unix_error("sigemptyset failed");
+		if (sigaddset(&mask, SIGCHLD) < 0)
+			unix_error("sigaddset failed");	
         Sigprocmask(SIG_BLOCK, &mask, NULL);
 	
 		// Fork
-		if(( pid = fork()) == 0) {
+		if ((pid = fork()) < 0) {
+			unix_error("fork() error");
+		}
+		if (pid == 0) {
 			/* Child */
 			
 			// Unblock SIGCHLD
@@ -202,7 +208,7 @@ void eval(char *cmdline)
 				printf("Looking in /bin/...\n");
 				
 				// Note execve will blow it up after making its own copy, so no need to free.
-				char* inBin = (char*) malloc( sizeof("/bin/") + sizeof(argv[0]) + (sizeof(char)*2) );
+				char* inBin = (char*) Malloc( sizeof("/bin/") + sizeof(argv[0]) + (sizeof(char)*2) );
 				strcpy(inBin, "/bin/");
 				strcat(inBin, argv[0]);
 				if( execve(inBin, argv, environ) < 0) {
@@ -216,9 +222,13 @@ void eval(char *cmdline)
 		}
 		/* Parent */
 		
-		// Add to jobs
-		if(bg) addjob(jobs, pid, BG, argv[0]);
-		else addjob(jobs, pid, FG, argv[0]);
+		// if background, add to jobs
+		if(bg) {
+			if ( !addjob(jobs, pid, BG, argv[0]) ) {
+				printf("Failed to add job\n");
+				// should we exit?
+			}
+		}
 		
 		// Unblock SIGCHLD
 		Sigprocmask(SIG_UNBLOCK, &mask, NULL);		
@@ -230,7 +240,7 @@ void eval(char *cmdline)
 			}
 		}
 		else {
-			printf("%d %s", pid, cmdline);
+			printf("[%d] (%d) %s", pid2jid(pid), pid, cmdline);
 		}
     }
     
@@ -525,7 +535,7 @@ void listjobs(struct job_t *jobs)
 		    printf("listjobs: Internal error: job[%d].state=%d ", 
 			   i, jobs[i].state);
 	    }
-	    printf("%s", jobs[i].cmdline);
+	    printf("%s\n", jobs[i].cmdline);
 	}
     }
 }
@@ -604,3 +614,12 @@ void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
 	return;
 }
 
+/* malloc wrapper - from the CSAPP library */
+void *Malloc(size_t size)
+{
+	void *p;
+
+	if ((p  = malloc(size)) == NULL)
+	unix_error("Malloc error");
+	return p;
+}
