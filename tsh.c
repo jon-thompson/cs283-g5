@@ -176,6 +176,7 @@ void eval(char *cmdline)
     int bg = parseline(cmdline, argv);
 	pid_t pid;
 	sigset_t mask;
+	int r;
 	
     // Check for empty line
     if (argv[0] == NULL) {
@@ -222,12 +223,15 @@ void eval(char *cmdline)
 		}
 		/* Parent */
 		
-		// if background, add to jobs
+		// add to jobs
 		if(bg) {
-			if ( !addjob(jobs, pid, BG, argv[0]) ) {
-				printf("Failed to add job\n");
-				// should we exit?
-			}
+			r = addjob(jobs, pid, BG, argv[0]);
+		} else {
+			r = addjob(jobs, pid, FG, argv[0]);
+		}
+		if (!r) {
+			printf("Failed to add job\n");
+			// should we exit?
 		}
 		
 		// Unblock SIGCHLD
@@ -237,6 +241,9 @@ void eval(char *cmdline)
 			int status;
 			if( waitpid(pid, &status, 0) < 0) {
 				unix_error("waitfg: waitpid error");
+			}
+			if (!deletejob(jobs, pid)) {
+				printf("Failed to delete job\n");
 			}
 		}
 		else {
@@ -372,6 +379,23 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
+	pid_t pid;
+	int jid;	
+	
+	if ( (pid = fgpid(jobs)) == 0) {
+		return;	
+	}
+	
+	if ( (jid = pid2jid(pid)) == 0) {
+		return;	
+	}
+	
+	if (kill(pid, sig) < 0) {
+		unix_error("kill failed");
+	}
+	
+	printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, sig);
+	
     return;
 }
 
