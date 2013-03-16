@@ -242,13 +242,7 @@ void eval(char *cmdline)
 		Sigprocmask(SIG_UNBLOCK, &mask, NULL);		
 		
 		if(!bg) {
-			int status;
-			if( waitpid(pid, &status, 0) < 0) {
-				unix_error("waitfg: waitpid error");
-			}
-			if (!deletejob(jobs, pid)) {
-				printf("Failed to delete job\n");
-			}
+			waitfg(pid);
 		}
 		else {
 			printf("[%d] (%d) %s", pid2jid(pid), pid, cmdline);
@@ -357,6 +351,14 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
+	if (pid <= 0) {
+		return;
+	}
+	
+	while(pid == fgpid(jobs)) {
+		sleep(0);
+	}
+	
     return;
 }
 
@@ -373,6 +375,17 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
+	pid_t pid;
+	int status;
+	while ( (pid = waitpid(-1, &status, WNOHANG)) > 0) {
+		if ((WIFEXITED(status) || WIFSIGNALED(status)) && !deletejob(jobs, pid)) {
+			unix_error("deletejob failed");
+		}
+	}
+	
+	if (errno != ECHILD)
+		unix_error("waitpid error");
+		
     return;
 }
 
@@ -421,7 +434,7 @@ void sigtstp_handler(int sig)
 		return;
 	}
 	
-	if (kill(pid, SIGTSTP) < 0) {
+	if (kill(-pid, SIGTSTP) < 0) {
 		unix_error("kill failed");
 	}
 	job->state = ST;
