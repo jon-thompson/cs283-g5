@@ -60,8 +60,8 @@ struct job_t jobs[MAXJOBS]; /* The job list */
 
 /* Here are the functions that you will implement */
 void eval(char *cmdline);
-int builtin_cmd(char **argv);
-void do_bgfg(char **argv);
+int builtin_cmd(int *argc, char **argv);
+void do_bgfg(int *argc, char **argv);
 void waitfg(pid_t pid);
 
 void sigchld_handler(int sig);
@@ -69,7 +69,7 @@ void sigtstp_handler(int sig);
 void sigint_handler(int sig);
 
 /* Here are helper routines that we've provided for you */
-int parseline(const char *cmdline, char **argv); 
+int parseline(const char *cmdline, char **argv, int *set_argc); 
 void sigquit_handler(int sig);
 
 void clearjob(struct job_t *job);
@@ -173,7 +173,8 @@ int main(int argc, char **argv)
 void eval(char *cmdline) 
 {
     char *argv[MAXARGS];
-    int bg = parseline(cmdline, argv);
+	int *argc = Malloc(sizeof(int));
+    int bg = parseline(cmdline, argv, argc);
 	pid_t pid;
 	sigset_t mask;
 	int r;
@@ -183,7 +184,7 @@ void eval(char *cmdline)
         return; 
     }
     
-    if (!builtin_cmd(argv)) {
+    if (!builtin_cmd( argc ,argv)) {
 		
 		// Block SIGCHLD
 		if (sigemptyset(&mask) < 0)
@@ -259,7 +260,7 @@ void eval(char *cmdline)
  * argument.  Return true if the user has requested a BG job, false if
  * the user has requested a FG job.  
  */
-int parseline(const char *cmdline, char **argv) 
+int parseline(const char *cmdline, char **argv, int* set_argc) 
 {
     static char array[MAXLINE]; /* holds local copy of command line */
     char *buf = array;          /* ptr that traverses command line */
@@ -269,43 +270,44 @@ int parseline(const char *cmdline, char **argv)
 
     strcpy(buf, cmdline);
     buf[strlen(buf)-1] = ' ';  /* replace trailing '\n' with space */
-    while (*buf && (*buf == ' ')) /* ignore leading spaces */
-	buf++;
-
-    /* Build the argv list */
-    argc = 0;
-    if (*buf == '\'') {
-	buf++;
-	delim = strchr(buf, '\'');
-    }
-    else {
-	delim = strchr(buf, ' ');
-    }
-
-    while (delim) {
-	argv[argc++] = buf;
-	*delim = '\0';
-	buf = delim + 1;
-	while (*buf && (*buf == ' ')) /* ignore spaces */
-	       buf++;
-
+    while (*buf && (*buf == ' ')) {  /* ignore leading spaces */
+		buf++;
+	}
+	
+	/* Build the argv list */
+	argc = 0;
 	if (*buf == '\'') {
-	    buf++;
-	    delim = strchr(buf, '\'');
+		buf++;
+		delim = strchr(buf, '\'');
 	}
 	else {
-	    delim = strchr(buf, ' ');
+		delim = strchr(buf, ' ');
 	}
-    }
-    argv[argc] = NULL;
-    
-    if (argc == 0)  /* ignore blank line */
+
+	while (delim) {
+		argv[argc++] = buf;
+		*delim = '\0';
+		buf = delim + 1;
+		while (*buf && (*buf == ' ')) /* ignore spaces */
+			buf++;
+			if (*buf == '\'') {
+				buf++;
+				delim = strchr(buf, '\'');
+			}
+			else {
+				delim = strchr(buf, ' ');
+			}
+	}
+	argv[argc] = NULL;
+
+	if (argc == 0)  /* ignore blank line */
 	return 1;
 
     /* should the job run in the background? */
     if ((bg = (*argv[argc-1] == '&')) != 0) {
-	argv[--argc] = NULL;
+		argv[--argc] = NULL;
     }
+	*set_argc = argc;
     return bg;
 }
 
@@ -313,8 +315,10 @@ int parseline(const char *cmdline, char **argv)
  * builtin_cmd - If the user has typed a built-in command then execute
  *    it immediately.  
  */
-int builtin_cmd(char **argv) 
+int builtin_cmd(int *argc, char **argv) 
 {
+	if(argc == 0) return 1;
+	
     if (strcmp(argv[0], "quit") == 0 || strcmp(argv[0], "exit") == 0) {
         exit(0);
     }
@@ -322,7 +326,7 @@ int builtin_cmd(char **argv)
         strcmp(argv[0], "fg") == 0 ||
         strcmp(argv[0], "bg") == 0
     ) {
-        do_bgfg(argv);
+        do_bgfg(argc, argv);
         return 1;
     }
     if (strcmp(argv[0], "jobs") == 0) {
@@ -340,8 +344,15 @@ int builtin_cmd(char **argv)
 /* 
  * do_bgfg - Execute the builtin bg and fg commands
  */
-void do_bgfg(char **argv) 
+void do_bgfg(int *argc, char **argv) 
 {
+	if(*argc < 1) return;
+	if(*argc < 2) {
+		printf("%s command requires PID or %%jobid argument\n", argv[0]);
+		return;
+	}
+
+	
 	// figure out which was called (bg or fg)
 	int bg = (strcmp(argv[0], "bg") == 0);
 	int fg = (strcmp(argv[0], "fg") == 0);
@@ -356,15 +367,24 @@ void do_bgfg(char **argv)
 	if (usingJid) {
 		int jid = atoi(argv[1] + 1);
 		job = getjobjid(jobs, jid);
+		if(job == NULL) {
+			printf("%s: No such job\n", argv[1]);
+			return;
+		}		
 	}
-	else {
+	else if( atoi(argv[1]) != 0) {
 		pid_t pid = (pid_t) atoi(argv[1]);
 		job = getjobpid(jobs, pid);
+		if(job == NULL) {
+			printf("%d: No such process\n", atoi(argv[1]));
+			return;
+		}
 	}	
-	if (job == NULL) {
-		printf("do_bgfg: invalid job\n");
+	else {
+		printf("argv[0] argument must be a PID or %%jobid \n");
 		return;
 	}
+
 	
 	// start job if it's not already running
 	if (job->state == ST) {
@@ -629,7 +649,7 @@ void listjobs(struct job_t *jobs)
 		    printf("listjobs: Internal error: job[%d].state=%d ", 
 			   i, jobs[i].state);
 	    }
-	    printf("%s", jobs[i].cmdline);
+	    printf("%s\n", jobs[i].cmdline);
 	}
     }
 }
