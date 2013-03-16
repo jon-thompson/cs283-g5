@@ -342,7 +342,45 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
-    printf("do_bgfg() called\n");
+	// figure out which was called (bg or fg)
+	int bg = (strcmp(argv[0], "bg") == 0);
+	int fg = (strcmp(argv[0], "fg") == 0);
+	if (!bg && !fg) {
+		printf("do_bgfg: invalid command (%s)\n", argv[0]);
+		return;
+	}
+	
+	// get job from jid or pid
+	struct job_t *job = NULL;	
+	int usingJid = (argv[1][0] == '%');
+	if (usingJid) {
+		int jid = atoi(argv[1] + 1);
+		job = getjobjid(jobs, jid);
+	}
+	else {
+		pid_t pid = (pid_t) atoi(argv[1]);
+		job = getjobpid(jobs, pid);
+	}	
+	if (job == NULL) {
+		printf("do_bgfg: invalid job\n");
+		return;
+	}
+	
+	// start job if it's not already running
+	if (job->state == ST) {
+		if (kill(-job->pid, SIGCONT) < 0) {
+			unix_error("kill failed");
+		}
+	}
+	
+	job->state = (bg) ? BG : FG;	
+	if (fg) {
+		waitfg(job->pid);
+	}
+	else {
+		printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+	}
+	
     return;
 }
 
@@ -382,9 +420,6 @@ void sigchld_handler(int sig)
 			unix_error("deletejob failed");
 		}
 	}
-	
-	if (errno != ECHILD)
-		unix_error("waitpid error");
 		
     return;
 }
@@ -407,7 +442,7 @@ void sigint_handler(int sig)
 		return;	
 	}
 	
-	if (kill(pid, sig) < 0) {
+	if (kill(-pid, sig) < 0) {
 		unix_error("kill failed");
 	}
 	
