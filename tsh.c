@@ -181,6 +181,7 @@ void eval(char *cmdline)
 	
     // Check for empty line
     if (argv[0] == NULL) {
+		free(argc);
         return; 
     }
     
@@ -221,8 +222,10 @@ void eval(char *cmdline)
 					printf("%s: Command not found in bin either.\n", argv[0]);
 					// But just in case.
 					free(inBin);
+					free(argc);
 					exit(0);
 				}
+				free(argc);
 				exit(0);
 			} 
 		}
@@ -236,7 +239,7 @@ void eval(char *cmdline)
 		}
 		if (!r) {
 			printf("Failed to add job\n");
-			// should we exit?
+			// should we exit? 
 		}
 		
 		// Unblock SIGCHLD
