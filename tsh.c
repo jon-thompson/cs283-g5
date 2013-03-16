@@ -249,7 +249,7 @@ void eval(char *cmdline)
 			printf("[%d] (%d) %s", pid2jid(pid), pid, cmdline);
 		}
     }
-    
+    free(argc);
     return;
 }
 
