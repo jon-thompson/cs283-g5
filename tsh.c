@@ -209,17 +209,13 @@ void eval(char *cmdline)
 			Sigprocmask(SIG_UNBLOCK, &mask, NULL);
 			
 			// Try to execute Command
-			if( execve(argv[0], argv, environ) < 0) {
-				printf("%s: Command not found in current directory.\n", argv[0]);
-				
-				printf("Looking in /bin/...\n");
-				
+			if( execve(argv[0], argv, environ) < 0) {				
 				// Note execve will blow it up after making its own copy, so no need to free.
 				char* inBin = (char*) Malloc( sizeof("/bin/") + sizeof(argv[0]) + (sizeof(char)*2) );
 				strcpy(inBin, "/bin/");
 				strcat(inBin, argv[0]);
 				if( execve(inBin, argv, environ) < 0) {
-					printf("%s: Command not found in bin either.\n", argv[0]);
+					printf("%s: Command not found\n", argv[0]);
 					// But just in case.
 					free(inBin);
 					free(argc);
@@ -379,12 +375,12 @@ void do_bgfg(int *argc, char **argv)
 		pid_t pid = (pid_t) atoi(argv[1]);
 		job = getjobpid(jobs, pid);
 		if(job == NULL) {
-			printf("%d: No such process\n", atoi(argv[1]));
+			printf("(%d): No such process\n", atoi(argv[1]));
 			return;
 		}
 	}	
 	else {
-		printf("argv[0] argument must be a PID or %%jobid \n");
+		printf("%s: argument must be a PID or %%jobid\n", bg ? "bg" : "fg");
 		return;
 	}
 
@@ -652,7 +648,7 @@ void listjobs(struct job_t *jobs)
 		    printf("listjobs: Internal error: job[%d].state=%d ", 
 			   i, jobs[i].state);
 	    }
-	    printf("%s\n", jobs[i].cmdline);
+	    printf("%s", jobs[i].cmdline);
 	}
     }
 }
