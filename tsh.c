@@ -179,15 +179,51 @@ void eval(char *cmdline)
     char *argv[MAXARGS];
 	int *argc = Malloc(sizeof(int));
     int bg = parseline(cmdline, argv, argc);
-	pid_t pid;
+	pid_t pid, fpid = -1;
 	sigset_t mask;
-	int r;
+	int i, r;
+	int pipeEnds[2];
 	
     // Check for empty line
     if (argv[0] == NULL) {
 		free(argc);
         return; 
     }
+	
+	i = 0;
+	int pipeL = 0;
+	while (argv[i] != NULL) {
+		if (strcmp(argv[i], "|") == 0 && argv[i+1] != NULL) {
+			pipeL = i;
+		}
+		i++;
+	}			
+	if (pipeL > 0) {
+		if (pipe(pipeEnds) < 0) {
+			unix_error("pipe() error");
+		}
+		
+		if ((fpid = fork()) < 0) {
+			unix_error("fork() error");
+		}
+		// if child / right side of pipe
+		if (fpid == 0) {
+			i = 0;
+			for (i = 0; i < pipeL + 1; i++) {
+				arrayDelete(argv, 0);
+			}
+			if (dup2(pipeEnds[0], 0) < 0) {
+				unix_error("dup2 failed");
+			}
+			
+		} else {
+			i = 0;
+			argv[pipeL] = NULL;
+			if (dup2(pipeEnds[1], 1) < 0) {
+				unix_error("dup2 failed");
+			}
+		}
+	}
     
     if (!builtin_cmd( argc ,argv)) {
 		
@@ -212,7 +248,7 @@ void eval(char *cmdline)
 			// Unblock SIGCHLD
 			Sigprocmask(SIG_UNBLOCK, &mask, NULL);
 			
-			int i = 0;
+			i = 0;
 			int redirectOutput = 0;
 			while (argv[i] != NULL) {
 				if (strcmp(argv[i], ">") == 0 && argv[i+1] != NULL) {
@@ -222,7 +258,6 @@ void eval(char *cmdline)
 			}			
 			if (redirectOutput > 0) {
 				char *file = argv[redirectOutput + 1];
-				printf("Redirect output to %s\n", file);
 				int fd;
 				if ( (fd = open(file, O_CREAT|O_WRONLY, 0644)) < 0) {
 					unix_error("open failed");
@@ -245,7 +280,6 @@ void eval(char *cmdline)
 			}			
 			if (redirectInput > 0) {
 				char *file = argv[redirectInput + 1];
-				printf("Redirect input from %s\n", file);
 				int fd;
 				if ( (fd = open(file, O_RDONLY)) < 0) {
 					unix_error("open failed");
@@ -288,7 +322,19 @@ void eval(char *cmdline)
 		}
 		
 		// Unblock SIGCHLD
-		Sigprocmask(SIG_UNBLOCK, &mask, NULL);		
+		Sigprocmask(SIG_UNBLOCK, &mask, NULL);	
+	
+		if (pipeL > 0) {
+			if (fpid != 0) {
+				waitpid(-1, NULL, 0);		
+			}
+			close(pipeEnds[0]);
+			close(pipeEnds[1]);
+			
+			if (fpid == 0) {
+				exit(0);
+			}
+		}		
 		
 		if(!bg) {
 			waitfg(pid);
@@ -298,6 +344,7 @@ void eval(char *cmdline)
 		}
     }
     free(argc);
+	
     return;
 }
 
@@ -806,7 +853,7 @@ void arrayDelete(char **a, int i) {
 	
 	int j;
 	for (j = i; j < n - 1; j++) {
-		strncpy(a[j], a[j + 1], sizeof(a[j]));
+		a[j] = a[j + 1];
 	}
 	a[n - 1] = NULL;
 }
