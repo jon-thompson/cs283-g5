@@ -434,9 +434,12 @@ void sigchld_handler(int sig)
 {
 	pid_t pid;
 	int status;
-	while ( (pid = waitpid(-1, &status, WNOHANG)) > 0) {
+	while ( (pid = waitpid(-1, &status, WUNTRACED|WNOHANG)) > 0) {
 		if ((WIFEXITED(status) || WIFSIGNALED(status)) && !deletejob(jobs, pid)) {
 			unix_error("deletejob failed");
+		}
+		else if (WIFSTOPPED(status)) {
+			sigtstp_handler(SIGTSTP);
 		}
 	}
 		
