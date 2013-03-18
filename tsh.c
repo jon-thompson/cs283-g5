@@ -435,7 +435,19 @@ void sigchld_handler(int sig)
 	pid_t pid;
 	int status;
 	while ( (pid = waitpid(-1, &status, WUNTRACED|WNOHANG)) > 0) {
-		if ((WIFEXITED(status) || WIFSIGNALED(status)) && !deletejob(jobs, pid)) {
+		if (WTERMSIG(status) == SIGINT) {
+			int jid;	
+			if ( (jid = pid2jid(pid)) == 0) {
+				return;	
+			}
+			
+			if (!deletejob(jobs, pid)) {
+				unix_error("deletejob failed");
+			}
+			
+			printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, SIGINT);
+		}
+		else if ((WIFEXITED(status) || WIFSIGNALED(status)) && !deletejob(jobs, pid)) {
 			unix_error("deletejob failed");
 		}
 		else if (WIFSTOPPED(status)) {
