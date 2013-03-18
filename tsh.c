@@ -16,6 +16,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 /* Misc manifest constants */
 #define MAXLINE    1024   /* max line size */
@@ -91,6 +93,8 @@ handler_t *Signal(int signum, handler_t *handler);
 
 void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
 void *Malloc(size_t size);
+
+void arrayDelete(char **a, int i);
 
 /*
  * main - The shell's main routine 
@@ -207,6 +211,51 @@ void eval(char *cmdline)
 			
 			// Unblock SIGCHLD
 			Sigprocmask(SIG_UNBLOCK, &mask, NULL);
+			
+			int i = 0;
+			int redirectOutput = 0;
+			while (argv[i] != NULL) {
+				if (strcmp(argv[i], ">") == 0 && argv[i+1] != NULL) {
+					redirectOutput = i;
+				}
+				i++;
+			}			
+			if (redirectOutput > 0) {
+				char *file = argv[redirectOutput + 1];
+				printf("Redirect output to %s\n", file);
+				int fd;
+				if ( (fd = open(file, O_CREAT|O_WRONLY, 0644)) < 0) {
+					unix_error("open failed");
+				}
+				if (dup2(fd, 1) < 0) {
+					unix_error("dup2 failed");
+				}
+				arrayDelete(argv, redirectOutput);
+				arrayDelete(argv, redirectOutput + 1);
+			}
+			
+			
+			i = 0;
+			int redirectInput = 0;
+			while (argv[i] != NULL) {
+				if (strcmp(argv[i], "<") == 0 && argv[i+1] != NULL) {
+					redirectInput = i;
+				}
+				i++;
+			}			
+			if (redirectInput > 0) {
+				char *file = argv[redirectInput + 1];
+				printf("Redirect input from %s\n", file);
+				int fd;
+				if ( (fd = open(file, O_RDONLY)) < 0) {
+					unix_error("open failed");
+				}
+				if (dup2(fd, 0) < 0) {
+					unix_error("dup2 failed");
+				}
+				arrayDelete(argv, redirectInput);
+				arrayDelete(argv, redirectInput + 1);
+			}
 			
 			// Try to execute Command
 			if( execve(argv[0], argv, environ) < 0) {				
@@ -741,4 +790,23 @@ void *Malloc(size_t size)
 	if ((p  = malloc(size)) == NULL)
 	unix_error("Malloc error");
 	return p;
+}
+
+// delete the i-th element from array a
+void arrayDelete(char **a, int i) {
+	int n = 0;
+	while (a[n] != NULL) {
+		n++;
+	}
+	
+	if (n == 0 || i > n || i < 0) {
+		printf("invalid arrayDelete\n");
+		return;
+	}
+	
+	int j;
+	for (j = i; j < n - 1; j++) {
+		strncpy(a[j], a[j + 1], sizeof(a[j]));
+	}
+	a[n - 1] = NULL;
 }
