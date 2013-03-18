@@ -434,7 +434,7 @@ void sigchld_handler(int sig)
 {
 	pid_t pid;
 	int status;
-	while ( (pid = waitpid(-1, &status, WUNTRACED|WNOHANG)) > 0) {
+	while ( (pid = waitpid(WAIT_ANY, &status, WUNTRACED|WNOHANG)) > 0) {
 		if (WTERMSIG(status) == SIGINT) {
 			int jid;	
 			if ( (jid = pid2jid(pid)) == 0) {
