@@ -450,8 +450,14 @@ void sigchld_handler(int sig)
 		else if ((WIFEXITED(status) || WIFSIGNALED(status)) && !deletejob(jobs, pid)) {
 			unix_error("deletejob failed");
 		}
-		else if (WIFSTOPPED(status)) {
-			sigtstp_handler(SIGTSTP);
+		else if (WIFSTOPPED(status)) {	
+			struct job_t *job;
+			if ( (job = getjobpid(jobs, pid)) == NULL) {
+				return;
+			}
+			job->state = ST;
+	
+			printf("Job [%d] (%d) stopped by signal %d\n", job->jid, pid, SIGTSTP);
 		}
 	}
 		
@@ -466,21 +472,14 @@ void sigchld_handler(int sig)
 void sigint_handler(int sig) 
 {
 	pid_t pid;
-	int jid;	
 	
 	if ( (pid = fgpid(jobs)) == 0) {
-		return;	
-	}
-	
-	if ( (jid = pid2jid(pid)) == 0) {
 		return;	
 	}
 	
 	if (kill(-pid, sig) < 0) {
 		unix_error("kill failed");
 	}
-	
-	printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, sig);
 	
     return;
 }
@@ -493,22 +492,14 @@ void sigint_handler(int sig)
 void sigtstp_handler(int sig) 
 {
 	pid_t pid;	
-	struct job_t *job;
 	
 	if ( (pid = fgpid(jobs)) == 0) {
 		return;	
 	}
 	
-	if ( (job = getjobpid(jobs, pid)) == NULL) {
-		return;
-	}
-	
 	if (kill(-pid, SIGTSTP) < 0) {
 		unix_error("kill failed");
 	}
-	job->state = ST;
-	
-	printf("Job [%d] (%d) stopped by signal %d\n", job->jid, pid, sig);
 	
     return;
 }
